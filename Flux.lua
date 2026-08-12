@@ -1107,6 +1107,7 @@ local AimbotSection = AimbotTab:CreateSection("Aimbot Settings")
 
 local AimbotEnabled = false
 local TriggerbotEnabled = false
+local AutoTriggerEnabled = false
 local AimPart = "Head"
 local FOV = 150
 local FOVColor = HexToRGB(ColorStorage.FOVColor)
@@ -1116,33 +1117,7 @@ local RightClickHeld = false
 local CurrentTarget = nil
 local LastTriggerTime = 0
 local TriggerDelay = 0.1
-
-local function CreateFOVCircle()
-   if FOVCircle then
-      FOVCircle:Remove()
-      FOVCircle = nil
-   end
-   FOVCircle = Drawing.new("Circle")
-   FOVCircle.Thickness = 2
-   FOVCircle.Radius = FOV
-   FOVCircle.Filled = false
-   FOVCircle.Color = FOVColor
-   FOVCircle.Transparency = 0.6
-   FOVCircle.Visible = AimbotEnabled
-   FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-   FOVCircle.ZIndex = 999
-   FOVCircle.NumSides = 64
-end
-
-local function UpdateFOVCircle()
-   if FOVCircle then
-      FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-      FOVCircle.Radius = FOV
-      FOVCircle.Color = FOVColor
-      FOVCircle.Visible = AimbotEnabled
-      FOVCircle.NumSides = 64
-   end
-end
+local TriggerKey = Enum.KeyCode.F
 
 local function IsPlayerVisible(player)
    if not player or not player.Character then return false end
@@ -1166,7 +1141,15 @@ local function IsPlayerVisible(player)
    
    local result = workspace:Raycast(origin, direction * distance, raycastParams)
    
-   return result == nil
+   if not result then
+      return true
+   end
+   
+   if result.Instance and result.Instance:IsDescendantOf(char) then
+      return true
+   end
+   
+   return false
 end
 
 local function GetClosestPlayer()
@@ -1229,7 +1212,7 @@ local function Triggerbot()
    local currentTime = tick()
    if currentTime - LastTriggerTime < TriggerDelay then return end
    
-   local mousePos = UserInputService:GetMouseLocation()
+   local mousePos = Vector2.new(Mouse.X, Mouse.Y)
    if not mousePos then return end
    
    local target = nil
@@ -1262,10 +1245,35 @@ local function Triggerbot()
    end
    
    if target then
-      VirtualInput:SendMouseButtonEvent(Enum.UserInputType.MouseButton1, 0, true)
-      task.wait(0.01)
-      VirtualInput:SendMouseButtonEvent(Enum.UserInputType.MouseButton1, 0, false)
+      mouse1click()
       LastTriggerTime = tick()
+   end
+end
+
+local function CreateFOVCircle()
+   if FOVCircle then
+      FOVCircle:Remove()
+      FOVCircle = nil
+   end
+   FOVCircle = Drawing.new("Circle")
+   FOVCircle.Thickness = 2
+   FOVCircle.Radius = FOV
+   FOVCircle.Filled = false
+   FOVCircle.Color = FOVColor
+   FOVCircle.Transparency = 0.6
+   FOVCircle.Visible = AimbotEnabled
+   FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+   FOVCircle.ZIndex = 999
+   FOVCircle.NumSides = 64
+end
+
+local function UpdateFOVCircle()
+   if FOVCircle then
+      FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+      FOVCircle.Radius = FOV
+      FOVCircle.Color = FOVColor
+      FOVCircle.Visible = AimbotEnabled
+      FOVCircle.NumSides = 64
    end
 end
 
@@ -1316,7 +1324,7 @@ local AimbotToggle = AimbotTab:CreateToggle({
                CurrentTarget = nil
             end
             
-            if TriggerbotEnabled then
+            if TriggerbotEnabled and (AutoTriggerEnabled or UserInputService:IsKeyDown(TriggerKey)) then
                Triggerbot()
             end
          end)
@@ -1343,6 +1351,20 @@ local TriggerbotToggle = AimbotTab:CreateToggle({
       Rayfield:Notify({
          Title = "Triggerbot",
          Content = Value and "Triggerbot enabled!" or "Triggerbot disabled!",
+         Duration = 2,
+      })
+   end,
+})
+
+local AutoTriggerToggle = AimbotTab:CreateToggle({
+   Name = "Auto Triggerbot",
+   CurrentValue = false,
+   Flag = "Auto Triggerbot",
+   Callback = function(Value)
+      AutoTriggerEnabled = Value
+      Rayfield:Notify({
+         Title = "Auto Triggerbot",
+         Content = Value and "Auto triggerbot enabled!" or "Auto triggerbot disabled!",
          Duration = 2,
       })
    end,
@@ -1387,6 +1409,18 @@ local AimPartDropdown = AimbotTab:CreateDropdown({
    Flag = "Aim Part",
    Callback = function(Value)
       AimPart = Value[1]
+   end,
+})
+
+local TriggerDelaySlider = AimbotTab:CreateSlider({
+   Name = "Trigger Delay",
+   Range = {0.05, 1},
+   Increment = 0.05,
+   Suffix = "seconds",
+   CurrentValue = 0.1,
+   Flag = "Trigger Delay",
+   Callback = function(Value)
+      TriggerDelay = Value
    end,
 })
 
