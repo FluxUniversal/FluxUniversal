@@ -169,6 +169,8 @@ local UptimeLabel = PlayerTab:CreateLabel("Uptime: 00:00:00")
 local VelocityLabel = PlayerTab:CreateLabel("Velocity: 0, 0, 0")
 local PositionLabel = PlayerTab:CreateLabel("Position: 0, 0, 0")
 
+local lastDebugUpdate = 0
+
 PlayerTab:CreateButton({
    Name = "Copy Game ID",
    Callback = function()
@@ -277,6 +279,10 @@ end)
 
 local startTime = tick()
 local debugConnection = RunService.Heartbeat:Connect(function()
+   local currentTime = tick()
+   if currentTime - lastDebugUpdate < 0.5 then return end
+   lastDebugUpdate = currentTime
+   
    local char = LocalPlayer.Character
    local humanoid = char and char:FindFirstChild("Humanoid")
    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
@@ -316,6 +322,9 @@ local RenderConnection = nil
 local HealthConnection = nil
 local DistanceConnection = nil
 local UpdateConnection = nil
+local LastUpdateTime = 0
+local LastHealthUpdate = 0
+local LastDistanceUpdate = 0
 
 local function HexToRGB(hex)
    hex = hex:gsub("#", "")
@@ -493,8 +502,6 @@ local function UpdateAllPlayers()
             if not TracerObjects[player] and TracerEnabled then CreateTracer(player) end
             if not SkeletonObjects[player] and SkeletonEnabled then CreateSkeleton(player) end
             if not BoxObjects[player] and BoxEnabled then CreateBox(player) end
-         else
-            RemoveESP(player)
          end
       end
    end
@@ -538,6 +545,10 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 local function UpdateHealthBars()
+   local currentTime = tick()
+   if currentTime - LastHealthUpdate < 0.1 then return end
+   LastHealthUpdate = currentTime
+   
    for player, healthObjects in pairs(HealthBarObjects) do
       local char = player.Character
       if char then
@@ -573,6 +584,10 @@ local function UpdateHealthBars()
 end
 
 local function UpdateDistance()
+   local currentTime = tick()
+   if currentTime - LastDistanceUpdate < 0.1 then return end
+   LastDistanceUpdate = currentTime
+   
    local localChar = LocalPlayer.Character
    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
    if not localRoot then return end
@@ -596,7 +611,6 @@ local function UpdateRender()
    
    local localChar = LocalPlayer.Character
    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
-   local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
    
    if TracerEnabled and localRoot then
       local startPos = localRoot.Position
@@ -862,7 +876,11 @@ local function UpdateUpdateConnection()
    end
    if ESPEnabled or NameEnabled or HealthBarEnabled or DistanceEnabled or TracerEnabled or SkeletonEnabled or BoxEnabled then
       UpdateConnection = RunService.Heartbeat:Connect(function()
-         UpdateAllPlayers()
+         local currentTime = tick()
+         if currentTime - LastUpdateTime >= 2 then
+            UpdateAllPlayers()
+            LastUpdateTime = currentTime
+         end
       end)
    end
 end
@@ -1069,7 +1087,8 @@ ESPTab:CreateInput({
             end
          end
          Rayfield:Notify({Title = "Color Updated", Content = "Health bar color changed to " .. Value, Duration = 2})
-      else         Rayfield:Notify({Title = "Invalid Color", Content = "Please enter a valid HEX color", Duration = 2})
+      else
+         Rayfield:Notify({Title = "Invalid Color", Content = "Please enter a valid HEX color", Duration = 2})
       end
    end,
 })
@@ -1184,6 +1203,8 @@ local CurrentTarget = nil
 local LastTriggerTime = 0
 local TriggerDelay = 0.1
 local IsClicking = false
+local LastAimCheck = 0
+local LastTriggerCheck = 0
 
 local function GetAimPart(char)
    if AimPart == "Head" then
@@ -1298,10 +1319,13 @@ local function FireWeapon()
 end
 
 local function Triggerbot()
+   local currentTime = tick()
+   if currentTime - LastTriggerCheck < 0.05 then return end
+   LastTriggerCheck = currentTime
+   
    local localChar = LocalPlayer.Character
    if not localChar then return end
    
-   local currentTime = tick()
    if currentTime - LastTriggerTime < TriggerDelay then return end
    
    local mousePos = UserInputService:GetMouseLocation()
@@ -1399,17 +1423,28 @@ local AimbotToggle = AimbotTab:CreateToggle({
             if not AimbotEnabled then return end
             
             if RightClickHeld then
-               if not CurrentTarget then
-                  CurrentTarget = GetClosestPlayer()
-               end
-               
-               if CurrentTarget and CurrentTarget.Character and 
-                  CurrentTarget.Character:FindFirstChild("Humanoid") and 
-                  CurrentTarget.Character.Humanoid.Health > 0 and
-                  IsPlayerVisible(CurrentTarget) then
-                  LockAim(CurrentTarget)
+               local currentTime = tick()
+               if currentTime - LastAimCheck >= 0.05 then
+                  LastAimCheck = currentTime
+                  
+                  if not CurrentTarget then
+                     CurrentTarget = GetClosestPlayer()
+                  end
+                  
+                  if CurrentTarget and CurrentTarget.Character and 
+                     CurrentTarget.Character:FindFirstChild("Humanoid") and 
+                     CurrentTarget.Character.Humanoid.Health > 0 and
+                     IsPlayerVisible(CurrentTarget) then
+                     LockAim(CurrentTarget)
+                  else
+                     CurrentTarget = nil
+                  end
                else
-                  CurrentTarget = nil
+                  if CurrentTarget and CurrentTarget.Character and 
+                     CurrentTarget.Character:FindFirstChild("Humanoid") and 
+                     CurrentTarget.Character.Humanoid.Health > 0 then
+                     LockAim(CurrentTarget)
+                  end
                end
             else
                CurrentTarget = nil
