@@ -38,7 +38,6 @@ local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
-local ContextActionService = game:GetService("ContextActionService")
 local VirtualInput = game:GetService("VirtualInputManager")
 
 local DrawingAvailable = true
@@ -316,6 +315,7 @@ local BoxObjects = {}
 local RenderConnection = nil
 local HealthConnection = nil
 local DistanceConnection = nil
+local UpdateConnection = nil
 
 local function HexToRGB(hex)
    hex = hex:gsub("#", "")
@@ -484,73 +484,12 @@ local function RemoveESP(player)
    end
 end
 
-local function RemoveAllESP()
-   local playersToRemove = {}
-   for player in pairs(ESPObjects) do
-      table.insert(playersToRemove, player)
-   end
-   for player in pairs(TracerObjects) do
-      if not table.find(playersToRemove, player) then
-         table.insert(playersToRemove, player)
-      end
-   end
-   for player in pairs(SkeletonObjects) do
-      if not table.find(playersToRemove, player) then
-         table.insert(playersToRemove, player)
-      end
-   end
-   for player in pairs(BoxObjects) do
-      if not table.find(playersToRemove, player) then
-         table.insert(playersToRemove, player)
-      end
-   end
-   
-   for _, player in ipairs(playersToRemove) do
-      RemoveESP(player)
-   end
-end
-
-local function RemoveAllTracers()
-   for player, tracer in pairs(TracerObjects) do
-      if tracer then
-         pcall(function()
-            tracer:Remove()
-         end)
-      end
-   end
-   TracerObjects = {}
-end
-
-local function RemoveAllSkeletons()
-   for player, lines in pairs(SkeletonObjects) do
-      for _, line in ipairs(lines) do
-         pcall(function()
-            line:Remove()
-         end)
-      end
-   end
-   SkeletonObjects = {}
-end
-
-local function RemoveAllBoxes()
-   for player, boxLines in pairs(BoxObjects) do
-      for _, line in ipairs(boxLines) do
-         pcall(function()
-            line:Remove()
-         end)
-      end
-   end
-   BoxObjects = {}
-end
-
 local function UpdateAllPlayers()
-   for _, player in ipairs(Players:GetPlayers()) do
+   local players = Players:GetPlayers()
+   for _, player in ipairs(players) do
       if player ~= LocalPlayer then
          if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            if not ESPObjects[player] and ESPEnabled then CreateESP(player) end
-            if not NameObjects[player] and NameEnabled then CreateESP(player) end
-            if not HealthBarObjects[player] and HealthBarEnabled then CreateESP(player) end
-            if not DistanceObjects[player] and DistanceEnabled then CreateESP(player) end
+            if not ESPObjects[player] and (ESPEnabled or NameEnabled or HealthBarEnabled or DistanceEnabled) then CreateESP(player) end
             if not TracerObjects[player] and TracerEnabled then CreateTracer(player) end
             if not SkeletonObjects[player] and SkeletonEnabled then CreateSkeleton(player) end
             if not BoxObjects[player] and BoxEnabled then CreateBox(player) end
@@ -564,7 +503,7 @@ end
 local function SetupPlayer(player)
    if player == LocalPlayer then return end
    player.CharacterAdded:Connect(function(char)
-      task.wait(0.5)
+      task.wait(0.3)
       RemoveESP(player)
       if ESPEnabled or NameEnabled or HealthBarEnabled or DistanceEnabled then
          CreateESP(player)
@@ -589,7 +528,7 @@ end
 
 Players.PlayerAdded:Connect(function(player)
    if player ~= LocalPlayer then
-      task.wait(0.5)
+      task.wait(0.3)
       SetupPlayer(player)
    end
 end)
@@ -638,12 +577,14 @@ local function UpdateDistance()
    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
    if not localRoot then return end
    
+   local localPos = localRoot.Position
+   
    for player, distLabel in pairs(DistanceObjects) do
       local char = player.Character
       if char then
          local root = char:FindFirstChild("HumanoidRootPart")
          if root then
-            local distance = (localRoot.Position - root.Position).Magnitude
+            local distance = (localPos - root.Position).Magnitude
             distLabel.Text = string.format("%.0fm", distance)
          end
       end
@@ -653,16 +594,16 @@ end
 local function UpdateRender()
    if not DrawingAvailable then return end
    
-   if TracerEnabled then
-      local localChar = LocalPlayer.Character
-      local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+   local localChar = LocalPlayer.Character
+   local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+   local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+   
+   if TracerEnabled and localRoot then
+      local startPos = localRoot.Position
+      local screenStart = Camera:WorldToViewportPoint(startPos)
       
       for player, tracer in pairs(TracerObjects) do
          if not tracer then continue end
-         if not localRoot then
-            tracer.Visible = false
-            continue
-         end
          
          local char = player.Character
          if not char then
@@ -678,13 +619,9 @@ local function UpdateRender()
             continue
          end
          
-         local startPos = localRoot.Position
-         local screenStart = Camera:WorldToViewportPoint(startPos)
+         local screenEnd = Camera:WorldToViewportPoint(root.Position)
          
-         local endPos = root.Position
-         local screenEnd = Camera:WorldToViewportPoint(endPos)
-         
-         if screenEnd then
+         if screenEnd.Z > 0 then
             tracer.From = Vector2.new(screenStart.X, screenStart.Y)
             tracer.To = Vector2.new(screenEnd.X, screenEnd.Y)
             tracer.Visible = true
@@ -692,7 +629,7 @@ local function UpdateRender()
             tracer.Visible = false
          end
       end
-   else
+   elseif not TracerEnabled then
       for player, tracer in pairs(TracerObjects) do
          if tracer then
             tracer.Visible = false
@@ -709,7 +646,7 @@ local function UpdateRender()
             end
             continue
          end
-         
+        
          local humanoid = char:FindFirstChild("Humanoid")
          if not humanoid or humanoid.Health <= 0 then
             for _, line in ipairs(lines) do
@@ -718,128 +655,116 @@ local function UpdateRender()
             continue
          end
          
-         local function GetPartPos(part)
-            if part and part:IsA("BasePart") then
-               local pos, vis = Camera:WorldToViewportPoint(part.Position)
-               if vis then
-                  return Vector2.new(pos.X, pos.Y)
-               end
-            end
-            return nil
-         end
-         
          local isR15 = char:FindFirstChild("UpperTorso") ~= nil
-        
+         
          if isR15 then
-            local head = char:FindFirstChild("Head")
-            local upperTorso = char:FindFirstChild("UpperTorso")
-            local lowerTorso = char:FindFirstChild("LowerTorso")
-            local leftUpperArm = char:FindFirstChild("LeftUpperArm")
-            local leftLowerArm = char:FindFirstChild("LeftLowerArm")
-            local rightUpperArm = char:FindFirstChild("RightUpperArm")
-            local rightLowerArm = char:FindFirstChild("RightLowerArm")
-            local leftUpperLeg = char:FindFirstChild("LeftUpperLeg")
-            local leftLowerLeg = char:FindFirstChild("LeftLowerLeg")
-            local rightUpperLeg = char:FindFirstChild("RightUpperLeg")
-            local rightLowerLeg = char:FindFirstChild("RightLowerLeg")
-            
-            local bones = {
-               head, upperTorso, lowerTorso,
-               leftUpperArm, leftLowerArm,
-               rightUpperArm, rightLowerArm,
-               leftUpperLeg, leftLowerLeg,
-               rightUpperLeg, rightLowerLeg
+            local parts = {
+               char:FindFirstChild("Head"),
+               char:FindFirstChild("UpperTorso"),
+               char:FindFirstChild("LowerTorso"),
+               char:FindFirstChild("LeftUpperArm"),
+               char:FindFirstChild("LeftLowerArm"),
+               char:FindFirstChild("RightUpperArm"),
+               char:FindFirstChild("RightLowerArm"),
+               char:FindFirstChild("LeftUpperLeg"),
+               char:FindFirstChild("LeftLowerLeg"),
+               char:FindFirstChild("RightUpperLeg"),
+               char:FindFirstChild("RightLowerLeg")
             }
             
             local positions = {}
             local allVisible = true
-            for _, bone in ipairs(bones) do
-               local pos = GetPartPos(bone)
-               if pos then
-                  table.insert(positions, pos)
+            
+            for i, part in ipairs(parts) do
+               if part then
+                  local pos, vis = Camera:WorldToViewportPoint(part.Position)
+                  if vis then
+                     positions[i] = Vector2.new(pos.X, pos.Y)
+                  else
+                     allVisible = false
+                     break
+                  end
                else
-                  table.insert(positions, nil)
                   allVisible = false
+                  break
                end
             end
             
-            local connections = {
-               {1,2}, {2,3},
-               {3,4}, {4,5},
-               {3,6}, {6,7},
-               {3,8}, {8,9},
-               {3,10}, {10,11},
-               {2,4}, {2,6}, {3,8}, {3,10}
-            }
-            
-            local idx = 1
-            for _, conn in ipairs(connections) do
-               local from = positions[conn[1]]
-               local to = positions[conn[2]]
-               local line = lines[idx]
-               if line then
-                  if from and to and allVisible then
-                     line.From = from
-                     line.To = to
+            if allVisible then
+               local connections = {
+                  {1,2}, {2,3}, {3,4}, {4,5}, {3,6}, {6,7},
+                  {3,8}, {8,9}, {3,10}, {10,11}, {2,4}, {2,6}, {3,8}, {3,10}
+               }
+               
+               for i, conn in ipairs(connections) do
+                  local line = lines[i]
+                  if line then
+                     line.From = positions[conn[1]]
+                     line.To = positions[conn[2]]
                      line.Visible = true
-                  else
-                     line.Visible = false
                   end
                end
-               idx = idx + 1
+            else
+               for _, line in ipairs(lines) do
+                  line.Visible = false
+               end
             end
          else
-            local head = char:FindFirstChild("Head")
-            local torso = char:FindFirstChild("Torso")
-            local leftArm = char:FindFirstChild("Left Arm")
-            local rightArm = char:FindFirstChild("Right Arm")
-            local leftLeg = char:FindFirstChild("Left Leg")
-            local rightLeg = char:FindFirstChild("Right Leg")
+            local parts = {
+               char:FindFirstChild("Head"),
+               char:FindFirstChild("Torso"),
+               char:FindFirstChild("Left Arm"),
+               char:FindFirstChild("Right Arm"),
+               char:FindFirstChild("Left Leg"),
+               char:FindFirstChild("Right Leg")
+            }
             
-            local bones = {head, torso, leftArm, rightArm, leftLeg, rightLeg}
             local positions = {}
             local allVisible = true
             
-            for _, bone in ipairs(bones) do
-               local pos = GetPartPos(bone)
-               if pos then
-                  table.insert(positions, pos)
+            for i, part in ipairs(parts) do
+               if part then
+                  local pos, vis = Camera:WorldToViewportPoint(part.Position)
+                  if vis then
+                     positions[i] = Vector2.new(pos.X, pos.Y)
+                  else
+                     allVisible = false
+                     break
+                  end
                else
-                  table.insert(positions, nil)
                   allVisible = false
+                  break
                end
             end
             
-            local connections = {
-               {1,2}, {2,3}, {2,4}, {2,5}, {2,6}
-            }
-            
-            local idx = 1
-            for _, conn in ipairs(connections) do
-               local from = positions[conn[1]]
-               local to = positions[conn[2]]
-               local line = lines[idx]
-               if line then
-                  if from and to and allVisible then
-                     line.From = from
-                     line.To = to
+            if allVisible then
+               local connections = {
+                  {1,2}, {2,3}, {2,4}, {2,5}, {2,6}
+               }
+               
+               for i, conn in ipairs(connections) do
+                  local line = lines[i]
+                  if line then
+                     line.From = positions[conn[1]]
+                     line.To = positions[conn[2]]
                      line.Visible = true
-                  else
+                  end
+               end
+               
+               for i = 6, 14 do
+                  local line = lines[i]
+                  if line then
                      line.Visible = false
                   end
                end
-               idx = idx + 1
-            end
-            
-            for i = 6, 14 do
-               local line = lines[i]
-               if line then
+            else
+               for _, line in ipairs(lines) do
                   line.Visible = false
                end
             end
          end
       end
-   else
+   elseif not SkeletonEnabled then
       for player, lines in pairs(SkeletonObjects) do
          for _, line in ipairs(lines) do
             if line then
@@ -882,10 +807,7 @@ local function UpdateRender()
          
          local distance = (Camera.CFrame.Position - root.Position).Magnitude
          local charHeight = (head.Position - root.Position).Magnitude
-         local widthScale = charHeight * 0.6
-         local heightScale = charHeight * 0.8
-         
-         local size = math.max(math.clamp(100 / distance, 20, 150), widthScale * 8)
+         local size = math.max(math.clamp(100 / distance, 20, 150), charHeight * 4.8)
          
          local x1 = headPos.X - size / 2
          local x2 = headPos.X + size / 2
@@ -896,14 +818,14 @@ local function UpdateRender()
             y2 = y1 + 50
          end
          
-         local lines = {
+         local lineData = {
             {Vector2.new(x1, y1), Vector2.new(x2, y1)},
             {Vector2.new(x2, y1), Vector2.new(x2, y2)},
             {Vector2.new(x2, y2), Vector2.new(x1, y2)},
             {Vector2.new(x1, y2), Vector2.new(x1, y1)},
          }
          
-         for i, linePair in ipairs(lines) do
+         for i, linePair in ipairs(lineData) do
             local line = boxLines[i]
             if line then
                line.From = linePair[1]
@@ -912,7 +834,7 @@ local function UpdateRender()
             end
          end
       end
-   else
+   elseif not BoxEnabled then
       for player, boxLines in pairs(BoxObjects) do
          for _, line in ipairs(boxLines) do
             if line then
@@ -933,6 +855,18 @@ local function UpdateRenderConnection()
    end
 end
 
+local function UpdateUpdateConnection()
+   if UpdateConnection then
+      UpdateConnection:Disconnect()
+      UpdateConnection = nil
+   end
+   if ESPEnabled or NameEnabled or HealthBarEnabled or DistanceEnabled or TracerEnabled or SkeletonEnabled or BoxEnabled then
+      UpdateConnection = RunService.Heartbeat:Connect(function()
+         UpdateAllPlayers()
+      end)
+   end
+end
+
 local ESPToggle = ESPTab:CreateToggle({
    Name = "ESP Players",
    CurrentValue = false,
@@ -942,6 +876,7 @@ local ESPToggle = ESPTab:CreateToggle({
       for _, highlight in pairs(ESPObjects) do
          highlight.Enabled = Value
       end
+      UpdateUpdateConnection()
       if Value then 
          UpdateAllPlayers() 
       end
@@ -979,6 +914,7 @@ local NameToggle = ESPTab:CreateToggle({
             nameLabel.Visible = Value
          end
       end
+      UpdateUpdateConnection()
       if Value then UpdateAllPlayers() end
    end,
 })
@@ -1021,6 +957,7 @@ local TracerToggle = ESPTab:CreateToggle({
          end
       end
       UpdateRenderConnection()
+      UpdateUpdateConnection()
    end,
 })
 
@@ -1062,6 +999,7 @@ local SkeletonToggle = ESPTab:CreateToggle({
          end
       end
       UpdateRenderConnection()
+      UpdateUpdateConnection()
    end,
 })
 
@@ -1111,6 +1049,7 @@ local HealthBarToggle = ESPTab:CreateToggle({
             HealthConnection = nil
          end
       end
+      UpdateUpdateConnection()
    end,
 })
 
@@ -1130,8 +1069,7 @@ ESPTab:CreateInput({
             end
          end
          Rayfield:Notify({Title = "Color Updated", Content = "Health bar color changed to " .. Value, Duration = 2})
-      else
-         Rayfield:Notify({Title = "Invalid Color", Content = "Please enter a valid HEX color", Duration = 2})
+      else         Rayfield:Notify({Title = "Invalid Color", Content = "Please enter a valid HEX color", Duration = 2})
       end
    end,
 })
@@ -1160,6 +1098,7 @@ local DistanceToggle = ESPTab:CreateToggle({
             DistanceConnection = nil
          end
       end
+      UpdateUpdateConnection()
    end,
 })
 
@@ -1203,6 +1142,7 @@ local BoxToggle = ESPTab:CreateToggle({
          end
       end
       UpdateRenderConnection()
+      UpdateUpdateConnection()
    end,
 })
 
@@ -1657,13 +1597,6 @@ ScriptTab:CreateButton({
       end
    end,
 })
-
-local updateConnection
-updateConnection = RunService.Heartbeat:Connect(function()
-   if ESPEnabled or NameEnabled or HealthBarEnabled or DistanceEnabled or TracerEnabled or SkeletonEnabled or BoxEnabled then
-      UpdateAllPlayers()
-   end
-end)
 
 Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
    if FOVCircle then
