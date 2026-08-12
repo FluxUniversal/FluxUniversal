@@ -397,7 +397,7 @@ local function CreateTracer(player)
    tracer.Color = HexToRGB(ColorStorage.TracerColor)
    tracer.Thickness = 1.5
    tracer.Transparency = 0.7
-   tracer.Visible = false
+   tracer.Visible = TracerEnabled
    TracerObjects[player] = tracer
 end
 
@@ -410,7 +410,7 @@ local function CreateSkeleton(player)
       line.Color = HexToRGB(ColorStorage.SkeletonColor)
       line.Thickness = 2
       line.Transparency = 0.8
-      line.Visible = false
+      line.Visible = SkeletonEnabled
       table.insert(joints, line)
    end
    SkeletonObjects[player] = joints
@@ -427,7 +427,7 @@ local function CreateBox(player)
       line.Color = HexToRGB(ColorStorage.BoxColor)
       line.Thickness = 2
       line.Transparency = 0.7
-      line.Visible = false
+      line.Visible = BoxEnabled
       table.insert(box, line)
    end
    BoxObjects[player] = box
@@ -656,33 +656,45 @@ local TracerToggle = ESPTab:CreateToggle({
    Flag = "Tracer Toggle",
    Callback = function(Value)
       TracerEnabled = Value
+      
+      for _, tracer in pairs(TracerObjects) do
+         if tracer then
+            tracer.Visible = Value
+         end
+      end
+      
       if not Value then
-         for _, tracer in pairs(TracerObjects) do tracer.Visible = false end
          if TracerConnection then TracerConnection:Disconnect() TracerConnection = nil end
       else
          UpdateAllPlayers()
          if not TracerConnection then
             TracerConnection = RunService.RenderStepped:Connect(function()
                if not TracerEnabled then
-                  for _, t in pairs(TracerObjects) do t.Visible = false end
+                  for _, t in pairs(TracerObjects) do 
+                     if t then t.Visible = false end 
+                  end
                   return
                end
                local localChar = LocalPlayer.Character
                local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
                if not localRoot then
-                  for _, t in pairs(TracerObjects) do t.Visible = false end
+                  for _, t in pairs(TracerObjects) do 
+                     if t then t.Visible = false end 
+                  end
                   return
                end
                local startPos = localRoot.Position
                local screenStart, startVisible = Camera:WorldToViewportPoint(startPos)
                if not startVisible then
-                  for _, t in pairs(TracerObjects) do t.Visible = false end
+                  for _, t in pairs(TracerObjects) do 
+                     if t then t.Visible = false end 
+                  end
                   return
                end
                for player, tracer in pairs(TracerObjects) do
                   local char = player.Character
                   if not char then
-                     tracer.Visible = false
+                     if tracer then tracer.Visible = false end
                      continue
                   end
                   
@@ -693,14 +705,14 @@ local TracerToggle = ESPTab:CreateToggle({
                      local endPos = root.Position
                      local screenEnd, endVisible = Camera:WorldToViewportPoint(endPos)
                      
-                     if endVisible then
+                     if endVisible and tracer then
                         tracer.From = Vector2.new(screenStart.X, screenStart.Y)
                         tracer.To = Vector2.new(screenEnd.X, screenEnd.Y)
-                        tracer.Visible = true
-                     else
+                        tracer.Visible = TracerEnabled
+                     elseif tracer then
                         tracer.Visible = false
                      end
-                  else
+                  elseif tracer then
                      tracer.Visible = false
                   end
                end
@@ -720,7 +732,9 @@ ESPTab:CreateInput({
       if success then
          ColorStorage.TracerColor = Value
          SaveColors()
-         for _, tracer in pairs(TracerObjects) do tracer.Color = color end
+         for _, tracer in pairs(TracerObjects) do 
+            if tracer then tracer.Color = color end
+         end
          Rayfield:Notify({Title = "Color Updated", Content = "Tracer color changed to " .. Value, Duration = 2})
       else
          Rayfield:Notify({Title = "Invalid Color", Content = "Please enter a valid HEX color", Duration = 2})
@@ -734,10 +748,14 @@ local SkeletonToggle = ESPTab:CreateToggle({
    Flag = "Skeleton Toggle",
    Callback = function(Value)
       SkeletonEnabled = Value
-      if not Value then
-         for _, lines in pairs(SkeletonObjects) do
-            for _, line in ipairs(lines) do line.Visible = false end
+      
+      for _, lines in pairs(SkeletonObjects) do
+         for _, line in ipairs(lines) do
+            if line then line.Visible = Value end
          end
+      end
+      
+      if not Value then
          if SkeletonConnection then SkeletonConnection:Disconnect() SkeletonConnection = nil end
       else
          UpdateAllPlayers()
@@ -745,14 +763,18 @@ local SkeletonToggle = ESPTab:CreateToggle({
             SkeletonConnection = RunService.RenderStepped:Connect(function()
                if not SkeletonEnabled then
                   for _, lines in pairs(SkeletonObjects) do
-                     for _, line in ipairs(lines) do line.Visible = false end
+                     for _, line in ipairs(lines) do 
+                        if line then line.Visible = false end
+                     end
                   end
                   return
                end
                for player, lines in pairs(SkeletonObjects) do
                   local char = player.Character
                   if not char then
-                     for _, line in ipairs(lines) do line.Visible = false end
+                     for _, line in ipairs(lines) do 
+                        if line then line.Visible = false end
+                     end
                      continue
                   end
                   
@@ -811,7 +833,7 @@ local SkeletonToggle = ESPTab:CreateToggle({
                            if from and to and allVisible then
                               line.From = from
                               line.To = to
-                              line.Visible = true
+                              line.Visible = SkeletonEnabled
                            else
                               line.Visible = false
                            end
@@ -831,7 +853,7 @@ local SkeletonToggle = ESPTab:CreateToggle({
                            if line1 then
                               line1.From = Vector2.new(headPos.X, headPos.Y)
                               line1.To = Vector2.new(torsoPos.X, torsoPos.Y)
-                              line1.Visible = true
+                              line1.Visible = SkeletonEnabled
                            end
                            
                            for i = 2, 12 do
@@ -861,7 +883,9 @@ ESPTab:CreateInput({
          ColorStorage.SkeletonColor = Value
          SaveColors()
          for _, lines in pairs(SkeletonObjects) do
-            for _, line in ipairs(lines) do line.Color = color end
+            for _, line in ipairs(lines) do 
+               if line then line.Color = color end
+            end
          end
          Rayfield:Notify({Title = "Color Updated", Content = "Skeleton color changed to " .. Value, Duration = 2})
       else
@@ -974,10 +998,14 @@ local BoxToggle = ESPTab:CreateToggle({
    Flag = "Box Toggle",
    Callback = function(Value)
       BoxEnabled = Value
-      if not Value then
-         for _, box in pairs(BoxObjects) do
-            for _, line in ipairs(box) do line.Visible = false end
+      
+      for _, box in pairs(BoxObjects) do
+         for _, line in ipairs(box) do
+            if line then line.Visible = Value end
          end
+      end
+      
+      if not Value then
          if BoxConnection then BoxConnection:Disconnect() BoxConnection = nil end
       else
          UpdateAllPlayers()
@@ -985,7 +1013,9 @@ local BoxToggle = ESPTab:CreateToggle({
             BoxConnection = RunService.RenderStepped:Connect(function()
                if not BoxEnabled then
                   for _, box in pairs(BoxObjects) do
-                     for _, line in ipairs(box) do line.Visible = false end
+                     for _, line in ipairs(box) do 
+                        if line then line.Visible = false end
+                     end
                   end
                   return
                end
@@ -993,7 +1023,9 @@ local BoxToggle = ESPTab:CreateToggle({
                for player, boxLines in pairs(BoxObjects) do
                   local char = player.Character
                   if not char then
-                     for _, line in ipairs(boxLines) do line.Visible = false end
+                     for _, line in ipairs(boxLines) do 
+                        if line then line.Visible = false end
+                     end
                      continue
                   end
                   
@@ -1002,7 +1034,9 @@ local BoxToggle = ESPTab:CreateToggle({
                   local humanoid = char:FindFirstChild("Humanoid")
                   
                   if not root or not head or not humanoid or humanoid.Health <= 0 then
-                     for _, line in ipairs(boxLines) do line.Visible = false end
+                     for _, line in ipairs(boxLines) do 
+                        if line then line.Visible = false end
+                     end
                      continue
                   end
                   
@@ -1010,7 +1044,9 @@ local BoxToggle = ESPTab:CreateToggle({
                   local feetPos, feetVis = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 2, 0))
                   
                   if not headVis or not feetVis then
-                     for _, line in ipairs(boxLines) do line.Visible = false end
+                     for _, line in ipairs(boxLines) do 
+                        if line then line.Visible = false end
+                     end
                      continue
                   end
                   
@@ -1034,7 +1070,7 @@ local BoxToggle = ESPTab:CreateToggle({
                      if line then
                         line.From = linePair[1]
                         line.To = linePair[2]
-                        line.Visible = true
+                        line.Visible = BoxEnabled
                      end
                   end
                end
@@ -1055,7 +1091,9 @@ ESPTab:CreateInput({
          ColorStorage.BoxColor = Value
          SaveColors()
          for _, box in pairs(BoxObjects) do
-            for _, line in ipairs(box) do line.Color = color end
+            for _, line in ipairs(box) do 
+               if line then line.Color = color end
+            end
          end
          Rayfield:Notify({Title = "Color Updated", Content = "Box color changed to " .. Value, Duration = 2})
       else
@@ -1084,14 +1122,13 @@ local function CreateFOVCircle()
       FOVCircle:Remove()
       FOVCircle = nil
    end
-   if not AimbotEnabled then return end
    FOVCircle = Drawing.new("Circle")
    FOVCircle.Thickness = 2
    FOVCircle.Radius = FOV
    FOVCircle.Filled = false
    FOVCircle.Color = FOVColor
    FOVCircle.Transparency = 0.6
-   FOVCircle.Visible = true
+   FOVCircle.Visible = AimbotEnabled
    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
    FOVCircle.ZIndex = 999
    FOVCircle.NumSides = 64
@@ -1192,7 +1229,9 @@ local function Triggerbot()
    local currentTime = tick()
    if currentTime - LastTriggerTime < TriggerDelay then return end
    
-   local mousePos = Mouse.X
+   local mousePos = UserInputService:GetMouseLocation()
+   if not mousePos then return end
+   
    local target = nil
    local closestDist = 50
    
@@ -1212,8 +1251,8 @@ local function Triggerbot()
       local pos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
       if not onScreen then continue end
       
-      local dx = pos.X - mousePos
-      local dy = pos.Y - Mouse.Y
+      local dx = pos.X - mousePos.X
+      local dy = pos.Y - mousePos.Y
       local dist = math.sqrt(dx * dx + dy * dy)
       
       if dist < closestDist then
