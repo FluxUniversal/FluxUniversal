@@ -1601,6 +1601,84 @@ local TriggerDelaySlider = AimbotTab:CreateSlider({
    end,
 })
 
+local TrollTab = Window:CreateTab("Troll", 4483362458)
+local TrollSection = TrollTab:CreateSection("Troll Features")
+
+local TouchFlingEnabled = false
+local TouchFlingThread = nil
+local TouchFlingRunning = false
+
+local function TouchFlingLoop()
+    local movel = 0.1
+    local lp = Players.LocalPlayer
+    
+    while TouchFlingEnabled do
+        RunService.Heartbeat:Wait()
+        
+        local char = lp.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if hrp then
+            local vel = hrp.Velocity
+            
+            hrp.Velocity = vel * 10000 + Vector3.new(0, 10000, 0)
+            
+            RunService.RenderStepped:Wait()
+            
+            hrp.Velocity = vel
+            
+            RunService.Stepped:Wait()
+            
+            hrp.Velocity = vel + Vector3.new(0, movel, 0)
+            movel = -movel
+        end
+    end
+end
+
+local function StartTouchFling()
+    if TouchFlingRunning then return end
+    TouchFlingRunning = true
+    
+    TouchFlingThread = coroutine.create(TouchFlingLoop)
+    coroutine.resume(TouchFlingThread)
+end
+
+local function StopTouchFling()
+    TouchFlingRunning = false
+    TouchFlingEnabled = false
+    
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        hrp.Velocity = Vector3.new(0, 0, 0)
+        hrp.RotVelocity = Vector3.new(0, 0, 0)
+    end
+end
+
+local TouchFlingToggle = TrollTab:CreateToggle({
+   Name = "Touch Fling",
+   CurrentValue = false,
+   Flag = "Touch Fling",
+   Callback = function(Value)
+      TouchFlingEnabled = Value
+      
+      if Value then
+         StartTouchFling()
+      else
+         StopTouchFling()
+      end
+   end,
+})
+
+LocalPlayer.CharacterAdded:Connect(function()
+   task.wait(0.5)
+   if TouchFlingEnabled then
+      StopTouchFling()
+      task.wait(0.1)
+      StartTouchFling()
+   end
+end)
+
 local ScriptTab = Window:CreateTab("Scripts", 4483362458)
 local ScriptSection = ScriptTab:CreateSection("Script Executor")
 
