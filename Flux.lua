@@ -40,13 +40,14 @@ local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 local VirtualInput = game:GetService("VirtualInputManager")
 
-local DrawingAvailable = true
-local success, DrawingLib = pcall(function()
-   return Drawing
+local DrawingAvailable = false
+local DrawingLib = nil
+pcall(function()
+   DrawingLib = Drawing
+   local test = DrawingLib.new("Line")
+   test:Remove()
+   DrawingAvailable = true
 end)
-if not success or not DrawingLib then
-   DrawingAvailable = false
-end
 
 local ColorStorage = {
    ESPColor = "#FF0000",
@@ -271,14 +272,16 @@ local function ResetPlayerStats()
    end
 end
 
-LocalPlayer.CharacterAdded:Connect(function(char)
+local CharacterAddedConnection = nil
+CharacterAddedConnection = LocalPlayer.CharacterAdded:Connect(function(char)
    char:WaitForChild("Humanoid")
    task.wait(0.5)
    ResetPlayerStats()
 end)
 
 local startTime = tick()
-local debugConnection = RunService.Heartbeat:Connect(function()
+local debugConnection = nil
+debugConnection = RunService.Heartbeat:Connect(function()
    local currentTime = tick()
    if currentTime - lastDebugUpdate < 0.5 then return end
    lastDebugUpdate = currentTime
@@ -318,6 +321,7 @@ local SkeletonObjects = {}
 local HealthBarObjects = {}
 local DistanceObjects = {}
 local BoxObjects = {}
+local PlayerConnections = {}
 local RenderConnection = nil
 local HealthConnection = nil
 local DistanceConnection = nil
@@ -461,7 +465,31 @@ local function RemoveESP(player)
       ESPObjects[player] = nil
    end
    if NameObjects[player] then
+      pcall(function()
+         NameObjects[player].Parent = nil
+         NameObjects[player]:Destroy()
+      end)
       NameObjects[player] = nil
+   end
+   if HealthBarObjects[player] then
+      pcall(function()
+         if HealthBarObjects[player][1] then
+            HealthBarObjects[player][1].Parent = nil
+            HealthBarObjects[player][1]:Destroy()
+         end
+         if HealthBarObjects[player][2] then
+            HealthBarObjects[player][2].Parent = nil
+            HealthBarObjects[player][2]:Destroy()
+         end
+      end)
+      HealthBarObjects[player] = nil
+   end
+   if DistanceObjects[player] then
+      pcall(function()
+         DistanceObjects[player].Parent = nil
+         DistanceObjects[player]:Destroy()
+      end)
+      DistanceObjects[player] = nil
    end
    if TracerObjects[player] then
       pcall(function()
@@ -477,12 +505,6 @@ local function RemoveESP(player)
       end
       SkeletonObjects[player] = nil
    end
-   if HealthBarObjects[player] then
-      HealthBarObjects[player] = nil
-   end
-   if DistanceObjects[player] then
-      DistanceObjects[player] = nil
-   end
    if BoxObjects[player] then
       for _, line in ipairs(BoxObjects[player]) do
          pcall(function()
@@ -491,6 +513,31 @@ local function RemoveESP(player)
       end
       BoxObjects[player] = nil
    end
+   if PlayerConnections[player] then
+      pcall(function()
+         PlayerConnections[player]:Disconnect()
+      end)
+      PlayerConnections[player] = nil
+   end
+end
+
+local function RemoveAllESP()
+   for player in pairs(ESPObjects) do
+      RemoveESP(player)
+   end
+   ESPObjects = {}
+   NameObjects = {}
+   TracerObjects = {}
+   SkeletonObjects = {}
+   HealthBarObjects = {}
+   DistanceObjects = {}
+   BoxObjects = {}
+   for player, connection in pairs(PlayerConnections) do
+      pcall(function()
+         connection:Disconnect()
+      end)
+   end
+   PlayerConnections = {}
 end
 
 local function UpdateAllPlayers()
@@ -509,7 +556,13 @@ end
 
 local function SetupPlayer(player)
    if player == LocalPlayer then return end
-   player.CharacterAdded:Connect(function(char)
+   if PlayerConnections[player] then
+      pcall(function()
+         PlayerConnections[player]:Disconnect()
+      end)
+      PlayerConnections[player] = nil
+   end
+   PlayerConnections[player] = player.CharacterAdded:Connect(function(char)
       task.wait(0.3)
       RemoveESP(player)
       if ESPEnabled or NameEnabled or HealthBarEnabled or DistanceEnabled then
@@ -533,14 +586,17 @@ for _, player in ipairs(Players:GetPlayers()) do
    end
 end
 
-Players.PlayerAdded:Connect(function(player)
+local PlayerAddedConnection = nil
+local PlayerRemovingConnection = nil
+
+PlayerAddedConnection = Players.PlayerAdded:Connect(function(player)
    if player ~= LocalPlayer then
       task.wait(0.3)
       SetupPlayer(player)
    end
 end)
 
-Players.PlayerRemoving:Connect(function(player)
+PlayerRemovingConnection = Players.PlayerRemoving:Connect(function(player)
    RemoveESP(player)
 end)
 
@@ -635,7 +691,7 @@ local function UpdateRender()
          
          local screenEnd = Camera:WorldToViewportPoint(root.Position)
          
-         if screenEnd.Z > 0 then
+         if screenStart.Z > 0 and screenEnd.Z > 0 then
             tracer.From = Vector2.new(screenStart.X, screenStart.Y)
             tracer.To = Vector2.new(screenEnd.X, screenEnd.Y)
             tracer.Visible = true
@@ -1299,21 +1355,20 @@ local function LockAim(target)
 end
 
 local function FireWeapon()
-   local success, result = pcall(function()
+   local success = pcall(function()
       if VirtualInput then
          VirtualInput:SendMouseButtonEvent(0, 0, 0, true, game, 1)
          task.wait(0.05)
          VirtualInput:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-         return true
       end
-      return false
    end)
    
-   if not success or not result then
+   if not success then
       pcall(function()
-         mouse1press()
+         local input = game:GetService("UserInputService")
+         input:SendInputEvent(Enum.UserInputType.MouseButton1, true)
          task.wait(0.05)
-         mouse1release()
+         input:SendInputEvent(Enum.UserInputType.MouseButton1, false)
       end)
    end
 end
@@ -1328,7 +1383,8 @@ local function Triggerbot()
    
    if currentTime - LastTriggerTime < TriggerDelay then return end
    
-   local mousePos = UserInputService:GetMouseLocation()
+   local mouse = LocalPlayer:GetMouse()
+   local mousePos = Vector2.new(mouse.X, mouse.Y)
    
    for _, player in ipairs(Players:GetPlayers()) do
       if player == LocalPlayer then continue end
@@ -1392,14 +1448,17 @@ local function UpdateFOVCircle()
    end
 end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
+local InputBeganConnection = nil
+local InputEndedConnection = nil
+
+InputBeganConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
    if gameProcessed then return end
    if input.UserInputType == Enum.UserInputType.MouseButton2 then
       RightClickHeld = true
    end
 end)
 
-UserInputService.InputEnded:Connect(function(input, gameProcessed)
+InputEndedConnection = UserInputService.InputEnded:Connect(function(input, gameProcessed)
    if gameProcessed then return end
    if input.UserInputType == Enum.UserInputType.MouseButton2 then
       RightClickHeld = false
@@ -1633,10 +1692,74 @@ ScriptTab:CreateButton({
    end,
 })
 
-Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+local ViewportConnection = nil
+ViewportConnection = Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
    if FOVCircle then
       FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
    end
 end)
+
+local WindowDestroyConnection = nil
+WindowDestroyConnection = Window:GetService("Destroy"):Connect(function()
+   if debugConnection then
+      debugConnection:Disconnect()
+      debugConnection = nil
+   end
+   if RenderConnection then
+      RenderConnection:Disconnect()
+      RenderConnection = nil
+   end
+   if HealthConnection then
+      HealthConnection:Disconnect()
+      HealthConnection = nil
+   end
+   if DistanceConnection then
+      DistanceConnection:Disconnect()
+      DistanceConnection = nil
+   end
+   if UpdateConnection then
+      UpdateConnection:Disconnect()
+      UpdateConnection = nil
+   end
+   if AimbotConnection then
+      AimbotConnection:Disconnect()
+      AimbotConnection = nil
+   end
+   if TriggerbotConnection then
+      TriggerbotConnection:Disconnect()
+      TriggerbotConnection = nil
+   end
+   if FOVCircle then
+      FOVCircle:Remove()
+      FOVCircle = nil
+   end
+   if CharacterAddedConnection then
+      CharacterAddedConnection:Disconnect()
+      CharacterAddedConnection = nil
+   end
+   if PlayerAddedConnection then
+      PlayerAddedConnection:Disconnect()
+      PlayerAddedConnection = nil
+   end
+   if PlayerRemovingConnection then
+      PlayerRemovingConnection:Disconnect()
+      PlayerRemovingConnection = nil
+   end
+   if InputBeganConnection then
+      InputBeganConnection:Disconnect()
+      InputBeganConnection = nil
+   end
+   if InputEndedConnection then
+      InputEndedConnection:Disconnect()
+      InputEndedConnection = nil
+   end
+   if ViewportConnection then
+      ViewportConnection:Disconnect()
+      ViewportConnection = nil
+   end
+   RemoveAllESP()
+end)
+
+UpdateUpdateConnection()
 
 return Window
