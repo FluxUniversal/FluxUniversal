@@ -1602,7 +1602,7 @@ local TriggerDelaySlider = AimbotTab:CreateSlider({
 })
 
 local TrollTab = Window:CreateTab("Troll", 4483362458)
-local TrollSection = TrollTab:CreateSection("Troll Features")
+local TrollSection = TrollTab:CreateSection("Fling")
 
 local TouchFlingEnabled = false
 local TouchFlingThread = nil
@@ -1679,7 +1679,7 @@ LocalPlayer.CharacterAdded:Connect(function()
    end
 end)
 
-local InvisibleSection = TrollTab:CreateSection("Invisible")
+local InvisibleSection = TrollTab:CreateSection("Invisibility")
 
 local InvisibilityEnabled = false
 local InvisibilitySeat = nil
