@@ -38,3 +38,8 @@ Roblox Lua Documentation, Open Source Community, Rayfield UI Framework
 This disclaimer applies to all versions of this script.
 
 Use this code responsibly. Use your knowledge to create, not to destroy.
+
+Learning resources
+Roblox Lua Documentation : https://create.roblox.com/docs/
+Lua Programming Guide : https://www.lua.org/manual/5.1/
+Rayfield UI Framework : https://sirius.menu/rayfield/
