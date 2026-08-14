@@ -1679,6 +1679,141 @@ LocalPlayer.CharacterAdded:Connect(function()
    end
 end)
 
+local InvisibleSection = TrollTab:CreateSection("Invisible")
+
+local InvisibilityEnabled = false
+local InvisibilitySeat = nil
+local InvisibilityWeld = nil
+local InvisibilitySavedCFrame = nil
+
+local function EnableInvisibility()
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    InvisibilitySavedCFrame = hrp.CFrame
+    
+    char:MoveTo(Vector3.new(-25.95, 1000, 3537.55))
+    task.wait(0.15)
+    
+    local seat = Instance.new("Seat")
+    seat.Anchored = false
+    seat.CanCollide = false
+    seat.Name = "InvisChair"
+    seat.Transparency = 1
+    seat.Position = Vector3.new(-25.95, 1084, 3537.55)
+    seat.Parent = workspace
+    
+    local weld = Instance.new("Weld")
+    weld.Part0 = seat
+    weld.Part1 = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+    if weld.Part1 then
+        weld.Parent = seat
+    end
+    
+    seat.CFrame = InvisibilitySavedCFrame
+    
+    InvisibilitySeat = seat
+    InvisibilityWeld = weld
+    
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            part.Transparency = 0.6
+            part.CanCollide = false
+        elseif part:IsA("Decal") then
+            part.Transparency = 0.6
+        end
+    end
+    
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Accessory") then
+            local handle = child:FindFirstChild("Handle")
+            if handle then
+                handle.Transparency = 0.6
+                handle.CanCollide = false
+            end
+        end
+    end
+end
+
+local function DisableInvisibility()
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    if InvisibilitySeat then
+        InvisibilitySeat:Destroy()
+        InvisibilitySeat = nil
+    end
+    InvisibilityWeld = nil
+    
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            part.Transparency = 0
+            part.CanCollide = true
+        elseif part:IsA("Decal") then
+            part.Transparency = 0
+        end
+    end
+    
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Accessory") then
+            local handle = child:FindFirstChild("Handle")
+            if handle then
+                handle.Transparency = 0
+                handle.CanCollide = true
+            end
+        end
+    end
+    
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+end
+
+local InvisibilityToggle = TrollTab:CreateToggle({
+   Name = "Invisibility",
+   CurrentValue = false,
+   Flag = "Invisibility",
+   Callback = function(Value)
+      InvisibilityEnabled = Value
+      
+      if Value then
+         EnableInvisibility()
+      else
+         DisableInvisibility()
+      end
+   end,
+})
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    
+    local oldSeat = workspace:FindFirstChild("InvisChair")
+    if oldSeat then
+        oldSeat:Destroy()
+    end
+    
+    if InvisibilityEnabled then
+        InvisibilitySeat = nil
+        InvisibilityWeld = nil
+        EnableInvisibility()
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if InvisibilityEnabled and not LocalPlayer.Character then
+        local oldSeat = workspace:FindFirstChild("InvisChair")
+        if oldSeat then
+            oldSeat:Destroy()
+        end
+        InvisibilitySeat = nil
+        InvisibilityWeld = nil
+    end
+end)
+
 local ScriptTab = Window:CreateTab("Scripts", 4483362458)
 local ScriptSection = ScriptTab:CreateSection("Script Executor")
 
