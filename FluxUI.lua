@@ -5,6 +5,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
 
 local ExecutorName = "Unknown"
 pcall(function()
@@ -173,6 +174,10 @@ local KeybindNames = {
     [Enum.KeyCode.Tab] = "Tab",
     [Enum.KeyCode.CapsLock] = "Caps Lock",
     [Enum.KeyCode.Backquote] = "`",
+    [Enum.KeyCode.E] = "E",
+    [Enum.KeyCode.K] = "K",
+    [Enum.KeyCode.N] = "N",
+    [Enum.KeyCode.Space] = "Space",
 }
 
 local function getParent()
@@ -306,15 +311,17 @@ function FluxLibrary.new(config)
     self.Connections = {}
     self.Elements = {}
     self.Flags = {}
-    self.ToggleKey = config.ToggleKey or Enum.KeyCode.RightShift
+    self.ToggleKey = config.ToggleKey or Enum.KeyCode.K
     self.SettingsOpen = false
     self.KeybindListening = false
     self.SettingsData = {}
     self.SaveManager = nil
+    self.Notifications = {}
 
     self:_build()
     self:_bindInput()
     self:_createSettingsPanel()
+    self:_createNotificationSystem()
 
     self.Main.Visible = false
 
@@ -628,6 +635,87 @@ function FluxLibrary:_build()
     })
 end
 
+function FluxLibrary:_createNotificationSystem()
+    self.NotificationHolder = create("Frame", {
+        Name = "Notifications",
+        Size = UDim2.new(0, 280, 1, -40),
+        Position = UDim2.new(1, -300, 0, 20),
+        BackgroundTransparency = 1,
+        ZIndex = 200,
+        Parent = self.Gui
+    })
+
+    create("UIListLayout", {
+        Padding = UDim.new(0, 8),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        VerticalAlignment = Enum.VerticalAlignment.Top,
+        Parent = self.NotificationHolder
+    })
+end
+
+function FluxLibrary:Notify(config)
+    config = config or {}
+    local title = config.Title or "Notification"
+    local content = config.Content or ""
+    local duration = config.Duration or 3
+
+    local notif = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 60),
+        BackgroundColor3 = self.Theme.Background,
+        BorderSizePixel = 0,
+        ZIndex = 201,
+        Parent = self.NotificationHolder
+    })
+    corner(notif, 8)
+    stroke(notif, self.Theme.Border, 1, 0.3)
+
+    local accent = create("Frame", {
+        Size = UDim2.new(0, 3, 1, 0),
+        BackgroundColor3 = self.Theme.Accent,
+        BorderSizePixel = 0,
+        ZIndex = 201,
+        Parent = notif
+    })
+    corner(accent, 2)
+
+    create("TextLabel", {
+        Size = UDim2.new(1, -20, 0, 20),
+        Position = UDim2.new(0, 12, 0, 8),
+        BackgroundTransparency = 1,
+        Text = title,
+        TextColor3 = self.Theme.Text,
+        Font = FontBold,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 201,
+        Parent = notif
+    })
+
+    create("TextLabel", {
+        Size = UDim2.new(1, -20, 0, 24),
+        Position = UDim2.new(0, 12, 0, 28),
+        BackgroundTransparency = 1,
+        Text = content,
+        TextColor3 = self.Theme.SubText,
+        Font = Font,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextWrapped = true,
+        ZIndex = 201,
+        Parent = notif
+    })
+
+    notif.BackgroundTransparency = 1
+    notif.Position = UDim2.new(0, 20, 0, 0)
+    tween(notif, { BackgroundTransparency = 0, Position = UDim2.new(0, 0, 0, 0) }, 0.25)
+
+    task.delay(duration, function()
+        tween(notif, { BackgroundTransparency = 1, Position = UDim2.new(0, 20, 0, 0) }, 0.25)
+        task.wait(0.3)
+        notif:Destroy()
+    end)
+end
+
 function FluxLibrary:_createSettingsPanel()
     self.SettingsPanel = create("Frame", {
         Name = "SettingsPanel",
@@ -682,15 +770,6 @@ function FluxLibrary:_createSettingsPanel()
 
     closeSettings.MouseButton1Click:Connect(function()
         self:ToggleSettings(false)
-    end)
-
-    closeSettings.MouseEnter:Connect(function()
-        tween(closeSettings, { BackgroundColor3 = Color3.fromRGB(235, 90, 90) }, 0.15)
-        closeSettings.TextColor3 = Color3.fromRGB(255, 255, 255)
-    end)
-    closeSettings.MouseLeave:Connect(function()
-        tween(closeSettings, { BackgroundColor3 = self.Theme.Tertiary }, 0.15)
-        closeSettings.TextColor3 = self.Theme.SubText
     end)
 
     local content = create("Frame", {
@@ -756,17 +835,6 @@ function FluxLibrary:_createSettingsPanel()
         keybindLabel.Text = "Press a key..."
         keybindLabel.TextColor3 = self.Theme.Accent
         keybindHint.Text = "ESC to cancel"
-    end)
-
-    keybindBtn.MouseEnter:Connect(function()
-        if not self.KeybindListening then
-            tween(keybindBtn, { BackgroundColor3 = self.Theme.ElementHover }, 0.15)
-        end
-    end)
-    keybindBtn.MouseLeave:Connect(function()
-        if not self.KeybindListening then
-            tween(keybindBtn, { BackgroundColor3 = self.Theme.Tertiary }, 0.15)
-        end
     end)
 
     create("TextLabel", {
@@ -1233,9 +1301,10 @@ end
 
 function FluxLibrary:_createSlider(tab, config)
     local el = createElementBase(tab, 62)
-    el.Value = config.Default or config.CurrentValue or 0
-    el.Min = config.Min or 0
-    el.Max = config.Max or 100
+    el.Value = config.CurrentValue or config.Default or 0
+    el.Min = config.Min or (config.Range and config.Range[1]) or 0
+    el.Max = config.Max or (config.Range and config.Range[2]) or 100
+    el.Increment = config.Increment or 1
     el.Callback = config.Callback or function() end
     el.Suffix = config.Suffix or ""
     el.Dragging = false
@@ -1306,6 +1375,9 @@ function FluxLibrary:_createSlider(tab, config)
     local function updateFromX(x)
         local rel = math.clamp((x - el.Track.AbsolutePosition.X) / el.Track.AbsoluteSize.X, 0, 1)
         local val = el.Min + (el.Max - el.Min) * rel
+        if el.Increment then
+            val = math.floor(val / el.Increment + 0.5) * el.Increment
+        end
         if el.Max - el.Min <= 1 then
             val = math.floor(val * 100 + 0.5) / 100
         else
@@ -1422,7 +1494,7 @@ end
 
 function FluxLibrary:_createToggle(tab, config)
     local el = createElementBase(tab, 44)
-    el.Value = config.Default ~= nil and config.Default or (config.CurrentValue ~= nil and config.CurrentValue or false)
+    el.Value = config.CurrentValue ~= nil and config.CurrentValue or (config.Default ~= nil and config.Default or false)
     el.Callback = config.Callback or function() end
     el.Name = config.Name or "Toggle"
     el.Flag = config.Flag
@@ -1486,18 +1558,6 @@ function FluxLibrary:_createToggle(tab, config)
         el:SetValue(not el.Value)
     end)
 
-    el.ClickArea.MouseEnter:Connect(function()
-        if not el.Value then
-            tween(el.Switch, { BackgroundColor3 = el.Theme.ToggleOff:Lerp(el.Theme.Accent, 0.25) }, 0.15)
-        end
-    end)
-
-    el.ClickArea.MouseLeave:Connect(function()
-        if not el.Value then
-            tween(el.Switch, { BackgroundColor3 = el.Theme.ToggleOff }, 0.15)
-        end
-    end)
-
     function el:_retheme(T)
         el.Theme = T
         el.Container.BackgroundColor3 = T.ElementBg
@@ -1513,10 +1573,10 @@ end
 
 function FluxLibrary:_createTextBox(tab, config)
     local el = createElementBase(tab, 62)
-    el.Value = config.Default or config.CurrentValue or ""
+    el.Value = config.CurrentValue or config.Default or ""
     el.Callback = config.Callback or function() end
     el.Name = config.Name or "Input"
-    el.Placeholder = config.Placeholder or "Type here..."
+    el.Placeholder = config.PlaceholderText or config.Placeholder or "Type here..."
     el.Flag = config.Flag
     el.Type = "TextBox"
 
@@ -1564,6 +1624,9 @@ function FluxLibrary:_createTextBox(tab, config)
     el.Input.FocusLost:Connect(function()
         el.Value = el.Input.Text
         el.Callback(el.Value)
+        if config.RemoveTextAfterFocusLost then
+            el.Input.Text = ""
+        end
     end)
 
     function el:SetValue(val, silent)
@@ -1589,28 +1652,28 @@ function FluxLibrary:_createTextBox(tab, config)
     return el
 end
 
-function FluxLibrary:_createLabel(tab, config)
-    local el = createElementBase(tab, config.Height or 28)
+function FluxLibrary:_createLabel(tab, text)
+    local el = createElementBase(tab, 28)
     el.Container.BackgroundTransparency = 1
     el.Container.UIStroke.Transparency = 1
-    el.Name = config.Text or "Label"
+    el.Name = text or "Label"
     el.Type = "Label"
 
     el.Label = create("TextLabel", {
         Size = UDim2.new(1, -24, 1, 0),
         Position = UDim2.new(0, 12, 0, 0),
         BackgroundTransparency = 1,
-        Text = config.Text or "Label",
+        Text = text or "Label",
         TextColor3 = tab.Theme.Text,
-        Font = config.Bold and FontBold or Font,
-        TextSize = config.Size or 12,
-        TextXAlignment = config.Align or Enum.TextXAlignment.Left,
+        Font = Font,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
         TextWrapped = true,
         ZIndex = 2,
         Parent = el.Container
     })
 
-    function el:SetValue(val)
+    function el:Set(val)
         el.Label.Text = val
     end
 
@@ -1621,18 +1684,18 @@ function FluxLibrary:_createLabel(tab, config)
     return el
 end
 
-function FluxLibrary:_createSection(tab, config)
+function FluxLibrary:_createSection(tab, name)
     local el = createElementBase(tab, 26)
     el.Container.BackgroundTransparency = 1
     el.Container.UIStroke.Transparency = 1
-    el.Name = config.Name or "Section"
+    el.Name = name or "Section"
     el.Type = "Section"
 
     el.Label = create("TextLabel", {
         Size = UDim2.new(1, -24, 1, 0),
         Position = UDim2.new(0, 6, 0, 0),
         BackgroundTransparency = 1,
-        Text = string.upper(config.Name or "Section"),
+        Text = string.upper(name or "Section"),
         TextColor3 = tab.Theme.Muted,
         Font = FontBold,
         TextSize = 10,
@@ -1674,7 +1737,7 @@ end
 
 function FluxLibrary:_createKeybind(tab, config)
     local el = createElementBase(tab, 44)
-    el.Value = config.Default or config.CurrentValue or Enum.KeyCode.E
+    el.Value = config.CurrentValue or config.Default or Enum.KeyCode.E
     el.Callback = config.Callback or function() end
     el.Name = config.Name or "Keybind"
     el.Flag = config.Flag
@@ -1766,6 +1829,200 @@ function FluxLibrary:_createKeybind(tab, config)
     return el
 end
 
+function FluxLibrary:_createDropdown(tab, config)
+    local el = createElementBase(tab, 44)
+    el.Options = config.Options or {}
+    el.Value = config.CurrentOption or (config.Options and config.Options[1]) or ""
+    if type(el.Value) == "table" then el.Value = el.Value[1] end
+    el.Callback = config.Callback or function() end
+    el.Name = config.Name or "Dropdown"
+    el.Flag = config.Flag
+    el.Type = "Dropdown"
+    el.Open = false
+
+    registerFlag(self, el.Flag, el)
+
+    el.Label = create("TextLabel", {
+        Size = UDim2.new(1, -150, 1, 0),
+        Position = UDim2.new(0, 16, 0, 0),
+        BackgroundTransparency = 1,
+        Text = el.Name,
+        TextColor3 = tab.Theme.Text,
+        Font = FontSemibold,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 2,
+        Parent = el.Container
+    })
+
+    el.Btn = create("TextButton", {
+        Size = UDim2.new(0, 130, 0, 28),
+        Position = UDim2.new(1, -146, 0.5, -14),
+        BackgroundColor3 = tab.Theme.Tertiary,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+        ZIndex = 3,
+        Parent = el.Container
+    })
+    corner(el.Btn, 6)
+
+    el.BtnLabel = create("TextLabel", {
+        Size = UDim2.new(1, -16, 1, 0),
+        Position = UDim2.new(0, 8, 0, 0),
+        BackgroundTransparency = 1,
+        Text = tostring(el.Value),
+        TextColor3 = tab.Theme.Text,
+        Font = FontMedium,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 3,
+        Parent = el.Btn
+    })
+
+    el.Arrow = create("TextLabel", {
+        Size = UDim2.new(0, 16, 1, 0),
+        Position = UDim2.new(1, -20, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "v",
+        TextColor3 = tab.Theme.SubText,
+        Font = FontBold,
+        TextSize = 10,
+        ZIndex = 3,
+        Parent = el.Btn
+    })
+
+    el.Menu = create("Frame", {
+        Size = UDim2.new(0, 160, 0, 0),
+        Position = UDim2.new(1, -160, 1, 4),
+        BackgroundColor3 = tab.Theme.Background,
+        BorderSizePixel = 0,
+        Visible = false,
+        ClipsDescendants = true,
+        ZIndex = 50,
+        Parent = el.Container
+    })
+    corner(el.Menu, 6)
+    stroke(el.Menu, tab.Theme.Border, 1, 0.3)
+
+    create("UIListLayout", {
+        Padding = UDim.new(0, 2),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = el.Menu
+    })
+    padding(el.Menu, 4, 4, 4, 4)
+
+    local optionButtons = {}
+
+    local function buildOptions()
+        for _, btn in ipairs(optionButtons) do
+            btn:Destroy()
+        end
+        optionButtons = {}
+
+        for _, option in ipairs(el.Options) do
+            local optBtn = create("TextButton", {
+                Size = UDim2.new(1, 0, 0, 24),
+                BackgroundColor3 = tab.Theme.Tertiary,
+                BorderSizePixel = 0,
+                Text = "",
+                AutoButtonColor = false,
+                ZIndex = 51,
+                Parent = el.Menu
+            })
+            corner(optBtn, 4)
+
+            create("TextLabel", {
+                Size = UDim2.new(1, -8, 1, 0),
+                Position = UDim2.new(0, 4, 0, 0),
+                BackgroundTransparency = 1,
+                Text = tostring(option),
+                TextColor3 = tab.Theme.Text,
+                Font = FontMedium,
+                TextSize = 11,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                ZIndex = 51,
+                Parent = optBtn
+            })
+
+            optBtn.MouseButton1Click:Connect(function()
+                el.Value = option
+                el.BtnLabel.Text = tostring(option)
+                el:Close()
+                el.Callback(option)
+            end)
+
+            optBtn.MouseEnter:Connect(function()
+                tween(optBtn, { BackgroundColor3 = tab.Theme.ElementHover }, 0.1)
+            end)
+            optBtn.MouseLeave:Connect(function()
+                tween(optBtn, { BackgroundColor3 = tab.Theme.Tertiary }, 0.1)
+            end)
+
+            table.insert(optionButtons, optBtn)
+        end
+    end
+
+    buildOptions()
+
+    function el:Open()
+        el.Open = true
+        el.Menu.Visible = true
+        el.Menu.Size = UDim2.new(0, 160, 0, 0)
+        local targetHeight = math.min(#el.Options * 26 + 8, 200)
+        tween(el.Menu, { Size = UDim2.new(0, 160, 0, targetHeight) }, 0.2, Enum.EasingStyle.Quart)
+    end
+
+    function el:Close()
+        el.Open = false
+        tween(el.Menu, { Size = UDim2.new(0, 160, 0, 0) }, 0.15, Enum.EasingStyle.Quart)
+        task.delay(0.16, function()
+            if not el.Open then
+                el.Menu.Visible = false
+            end
+        end)
+    end
+
+    el.Btn.MouseButton1Click:Connect(function()
+        if el.Open then
+            el:Close()
+        else
+            el:Open()
+        end
+    end)
+
+    function el:SetValue(val, silent)
+        self.Value = val
+        self.BtnLabel.Text = tostring(val)
+        if not silent then
+            self.Callback(val)
+        end
+    end
+
+    function el:_retheme(T)
+        el.Theme = T
+        el.Container.BackgroundColor3 = T.ElementBg
+        el.Label.TextColor3 = T.Text
+        el.Btn.BackgroundColor3 = T.Tertiary
+        el.BtnLabel.TextColor3 = T.Text
+        el.Menu.BackgroundColor3 = T.Background
+        if el.Menu:FindFirstChild("UIStroke") then
+            el.Menu.UIStroke.Color = T.Border
+        end
+        if el.Container:FindFirstChild("UIStroke") then
+            el.Container.UIStroke.Color = T.Border
+        end
+        for _, btn in ipairs(optionButtons) do
+            btn.BackgroundColor3 = T.Tertiary
+            for _, c in ipairs(btn:GetChildren()) do
+                if c:IsA("TextLabel") then c.TextColor3 = T.Text end
+            end
+        end
+    end
+
+    return el
+end
+
 function FluxLibrary:GetFlag(flag)
     return self.Flags[flag]
 end
@@ -1800,11 +2057,10 @@ end
 function FluxLibrary:CreateSaveManager(options)
     options = options or {}
     local saveManager = {}
-    saveManager.Folder = options.Folder or "FluxUI"
+    saveManager.Folder = options.FolderName or options.Folder or "FluxUI"
     saveManager.FileName = options.FileName or "config"
     saveManager.Library = self
 
-    local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request
     local writeFile = writefile
     local readFile = readfile
     local isFile = isfile
@@ -1813,8 +2069,8 @@ function FluxLibrary:CreateSaveManager(options)
     function saveManager:Save()
         if not writeFile then return end
         local data = self.Library:GetFlags()
-        local encoded = game:GetService("HttpService"):JSONEncode(data)
-        if makeFolder and not (isFile and isFile(self.Folder)) then
+        local encoded = HttpService:JSONEncode(data)
+        if makeFolder then
             pcall(makeFolder, self.Folder)
         end
         pcall(writeFile, self.Folder .. "/" .. self.FileName .. ".json", encoded)
@@ -1827,7 +2083,7 @@ function FluxLibrary:CreateSaveManager(options)
         local ok, content = pcall(readFile, path)
         if ok and content then
             local success, data = pcall(function()
-                return game:GetService("HttpService"):JSONDecode(content)
+                return HttpService:JSONDecode(content)
             end)
             if success then
                 self.Library:LoadFlags(data)
@@ -1851,19 +2107,6 @@ function FluxLibrary:Destroy()
     end
 end
 
-function FluxLibrary:CreateTabElement(tab)
-    return {
-        CreateButton = function(_, config) return self:_createButton(tab, config) end,
-        CreateToggle = function(_, config) return self:_createToggle(tab, config) end,
-        CreateSlider = function(_, config) return self:_createSlider(tab, config) end,
-        CreateTextBox = function(_, config) return self:_createTextBox(tab, config) end,
-        CreateLabel = function(_, config) return self:_createLabel(tab, config) end,
-        CreateSection = function(_, config) return self:_createSection(tab, config) end,
-        CreateDivider = function(_) return self:_createDivider(tab) end,
-        CreateKeybind = function(_, config) return self:_createKeybind(tab, config) end,
-    }
-end
-
 local function attachTabMethods(tab, library)
     function tab:CreateButton(config)
         return library:_createButton(tab, config or {})
@@ -1881,12 +2124,21 @@ local function attachTabMethods(tab, library)
         return library:_createTextBox(tab, config or {})
     end
 
-    function tab:CreateLabel(config)
-        return library:_createLabel(tab, config or {})
+    function tab:CreateInput(config)
+        return library:_createTextBox(tab, config or {})
     end
 
-    function tab:CreateSection(config)
-        return library:_createSection(tab, config or {})
+    function tab:CreateLabel(text, config)
+        if type(text) == "table" then
+            config = text
+            text = config.Text or "Label"
+        end
+        config = config or {}
+        return library:_createLabel(tab, text or config.Text)
+    end
+
+    function tab:CreateSection(name)
+        return library:_createSection(tab, name)
     end
 
     function tab:CreateDivider()
@@ -1895,6 +2147,10 @@ local function attachTabMethods(tab, library)
 
     function tab:CreateKeybind(config)
         return library:_createKeybind(tab, config or {})
+    end
+
+    function tab:CreateDropdown(config)
+        return library:_createDropdown(tab, config or {})
     end
 end
 
@@ -1905,17 +2161,9 @@ function FluxLibrary:CreateTab(name)
     return tab
 end
 
-local function buildLibrary()
-    local lib = FluxLibrary.new({
-        Theme = "Dark",
-        ToggleKey = Enum.KeyCode.RightShift
-    })
-    return lib
-end
-
 return {
     new = function(config) return FluxLibrary.new(config or {}) end,
     Library = FluxLibrary,
     Themes = Themes,
-    Default = buildLibrary,
+    Default = function() return FluxLibrary.new({ Theme = "Dark", ToggleKey = Enum.KeyCode.K }) end,
 }
