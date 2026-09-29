@@ -23,3 +23,5 @@ Use this code responsibly. Use your knowledge to create, not to destroy.
 Learning resources Roblox Lua Documentation : https://create.roblox.com/docs/ 
 Lua Programming Guide : https://www.lua.org/manual/5.1/ 
 Rayfield UI Framework : https://sirius.menu/rayfield/
+
+[![Reviewed on ScriptBlox](https://scriptblox.com/badge/Universal-Script-Flux-Universal-228189)](https://scriptblox.com/script/Universal-Script-Flux-Universal-228189)
